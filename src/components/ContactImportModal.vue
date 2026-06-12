@@ -98,7 +98,7 @@
               <input
                 ref="fileInput"
                 type="file"
-                accept=".csv,.vcf,.vcard,text/csv,text/vcard"
+                accept=".csv,.txt,.vcf,.vcard,text/csv,text/plain,text/vcard"
                 style="display:none"
                 @change="onFileChange"
                 id="contact-file-input"
@@ -106,9 +106,10 @@
               <div v-if="parsedContacts.length === 0" class="drop-inner">
                 <span style="font-size:42px">📂</span>
                 <p class="drop-title">Drop a file here or click to browse</p>
-                <p class="drop-hint">Supports <strong>CSV</strong> (.csv) and <strong>vCard</strong> (.vcf)</p>
+                <p class="drop-hint">Supports <strong>CSV</strong> (.csv), <strong>text</strong> (.txt), and <strong>vCard</strong> (.vcf)</p>
                 <div class="format-chips">
                   <span class="chip">CSV columns: name, phone</span>
+                  <span class="chip">Text lines: name, phone</span>
                   <span class="chip">vCard 2.1 / 3.0 / 4.0</span>
                 </div>
               </div>
@@ -179,7 +180,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { contactStore, addContacts, removeContact, clearContacts, parseCSV, parseVCard } from '../store/contacts.js'
+import { contactStore, addContacts, removeContact, clearContacts, parseCSV, parseTextContacts, parseVCard } from '../store/contacts.js'
 
 const props = defineProps({ modelValue: Boolean })
 const emit  = defineEmits(['update:modelValue', 'select'])
@@ -260,11 +261,13 @@ function processFile(file) {
     try {
       if (file.name.toLowerCase().endsWith('.vcf') || file.type === 'text/vcard') {
         contacts = parseVCard(text)
+      } else if (file.name.toLowerCase().endsWith('.txt') || file.type === 'text/plain') {
+        contacts = parseTextContacts(text)
       } else {
         contacts = parseCSV(text)
       }
       if (contacts.length === 0) {
-        parseError.value = 'No valid contacts found. Check that the file has a phone number column.'
+        parseError.value = 'No valid contacts found. Check that the file has a phone number column or one contact per text line.'
         return
       }
       parsedContacts.value = contacts

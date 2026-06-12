@@ -50,9 +50,10 @@ Before sending messages, you need to configure your gateway connection:
 
 ## 📝 Contact Formatting
 
-When importing contacts via CSV:
-* Ensure your CSV file has columns for `name` and `phone`.
-* Phone numbers should ideally be in international format (e.g., `+1234567890`).
+When importing contacts via CSV or plain text:
+* CSV files should have columns for `name` and `phone`.
+* Plain text files can use one contact per line, optionally with `name, phone`.
+* Phone numbers are normalized to international format during import.
 
 ## 📄 License
 

@@ -23,16 +23,37 @@ export const contactStore = reactive({
   get total() { return this.contacts.length },
 })
 
+function normalizePhone(phone, countryCode = '+94') {
+  const raw = String(phone || '').trim()
+  if (!raw) return ''
+
+  const digits = raw.replace(/[^\d+]/g, '')
+  if (!digits) return ''
+
+  if (digits.startsWith('+')) return `+${digits.slice(1).replace(/\D/g, '')}`
+  if (digits.startsWith('00')) return `+${digits.slice(2).replace(/\D/g, '')}`
+
+  const local = digits.replace(/\D/g, '')
+  if (local.startsWith('0') && local.length > 1) {
+    return `${countryCode}${local.slice(1)}`
+  }
+
+  if (local.length >= 7) {
+    return `${countryCode}${local}`
+  }
+
+  return ''
+}
+
 export function addContacts(newContacts) {
-  // Deduplicate by phone number (normalised — strip spaces/dashes)
-  const norm  = p => p.replace(/[\s\-().]/g, '')
-  const existing = new Set(contactStore.contacts.map(c => norm(c.phone)))
+  // Deduplicate by international phone number.
+  const existing = new Set(contactStore.contacts.map(c => normalizePhone(c.phone)))
 
   let added = 0
   for (const c of newContacts) {
-    const key = norm(c.phone)
+    const key = normalizePhone(c.phone)
     if (key && !existing.has(key)) {
-      contactStore.contacts.push({ id: crypto.randomUUID(), name: c.name || '', phone: c.phone })
+      contactStore.contacts.push({ id: crypto.randomUUID(), name: c.name || '', phone: key })
       existing.add(key)
       added++
     }
@@ -93,11 +114,37 @@ export function parseCSV(text) {
   const result = []
   for (let i = dataStart; i < lines.length; i++) {
     const cols  = splitLine(lines[i])
-    const phone = (cols[pi] || '').replace(/[^\d+]/g, '')   // keep digits and +
+    const phone = normalizePhone(cols[pi] || '')
     if (phone.length < 7) continue   // skip obviously invalid
     result.push({ name: cols[ni]?.replace(/^"|"$/g, '') || '', phone })
   }
   return result
+}
+
+/**
+ * Parse a plain text file into [{ name, phone }].
+ * Accepts one contact per line, optionally with a name and number separated by commas, semicolons, pipes, or tabs.
+ */
+export function parseTextContacts(text) {
+  const contacts = []
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+
+  for (const line of lines) {
+    const parts = line.split(/[;,|\t]/).map(part => part.trim()).filter(Boolean)
+    let name = ''
+    let phone = ''
+
+    if (parts.length === 1) {
+      phone = normalizePhone(parts[0])
+    } else {
+      phone = normalizePhone(parts[parts.length - 1])
+      name = parts.slice(0, -1).join(' ').trim()
+    }
+
+    if (phone) contacts.push({ name, phone })
+  }
+
+  return contacts
 }
 
 /**
@@ -122,8 +169,8 @@ export function parseVCard(text) {
         name = [parts[1], parts[0]].filter(Boolean).join(' ').trim()
       } else if (upper.startsWith('TEL') && line.includes(':')) {
         const raw   = line.split(':').slice(1).join(':').trim()
-        const clean = raw.replace(/[^\d+]/g, '')
-        if (clean.length >= 7 && !phone) phone = clean
+        const clean = normalizePhone(raw)
+        if (clean && !phone) phone = clean
       }
     }
 
