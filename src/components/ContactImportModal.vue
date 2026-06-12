@@ -85,6 +85,14 @@
           <!-- ── TAB: Import File ── -->
           <div v-if="tab === 'import'" class="modal-body">
 
+            <!-- Options -->
+            <div class="import-options" style="margin-bottom: 12px; display: flex; gap: 16px;">
+              <label class="save-check">
+                <input type="checkbox" v-model="ignoreInternational" id="ignore-international-check" />
+                <span>🚫 Ignore international numbers</span>
+              </label>
+            </div>
+
             <!-- Drop zone -->
             <div
               class="drop-zone"
@@ -236,6 +244,15 @@ const parsedContacts = ref([])
 const parseError     = ref('')
 const parsedSelection = ref(new Set())
 const saveToContacts  = ref(true)
+const ignoreInternational = ref(false)
+
+const rawFileContext = ref({ text: '', name: '', type: '' })
+
+watch(ignoreInternational, () => {
+  if (rawFileContext.value.text) {
+    processRawText(rawFileContext.value.text, rawFileContext.value.name, rawFileContext.value.type)
+  }
+})
 
 function onDrop(e) {
   isDragging.value = false
@@ -249,37 +266,44 @@ function onFileChange(e) {
 }
 
 function processFile(file) {
-  parseError.value     = ''
-  parsedContacts.value = []
-  parsedSelection.value = new Set()
   fileName.value = file.name
 
   const reader = new FileReader()
   reader.onload = (e) => {
-    const text = e.target.result
-    let contacts = []
-    try {
-      if (file.name.toLowerCase().endsWith('.vcf') || file.type === 'text/vcard') {
-        contacts = parseVCard(text)
-      } else if (file.name.toLowerCase().endsWith('.txt') || file.type === 'text/plain') {
-        contacts = parseTextContacts(text)
-      } else {
-        contacts = parseCSV(text)
-      }
-      if (contacts.length === 0) {
-        parseError.value = 'No valid contacts found. Check that the file has a phone number column or one contact per text line.'
-        return
-      }
-      parsedContacts.value = contacts
-      // Auto-select all valid contacts
-      parsedSelection.value = new Set(
-        contacts.map((_, i) => i).filter(i => !!contacts[i].phone)
-      )
-    } catch (err) {
-      parseError.value = `Failed to parse file: ${err.message}`
-    }
+    rawFileContext.value = { text: e.target.result, name: file.name, type: file.type }
+    processRawText(e.target.result, file.name, file.type)
   }
   reader.readAsText(file)
+}
+
+function processRawText(text, name, type) {
+  parseError.value     = ''
+  parsedContacts.value = []
+  parsedSelection.value = new Set()
+
+  let contacts = []
+  const options = { ignoreInternational: ignoreInternational.value }
+
+  try {
+    if (name.toLowerCase().endsWith('.vcf') || type === 'text/vcard') {
+      contacts = parseVCard(text, options)
+    } else if (name.toLowerCase().endsWith('.txt') || type === 'text/plain') {
+      contacts = parseTextContacts(text, options)
+    } else {
+      contacts = parseCSV(text, options)
+    }
+    if (contacts.length === 0) {
+      parseError.value = 'No valid contacts found. Check that the file has a phone number column or one contact per text line.'
+      return
+    }
+    parsedContacts.value = contacts
+    // Auto-select all valid contacts
+    parsedSelection.value = new Set(
+      contacts.map((_, i) => i).filter(i => !!contacts[i].phone)
+    )
+  } catch (err) {
+    parseError.value = `Failed to parse file: ${err.message}`
+  }
 }
 
 function clearParsed() {
@@ -287,6 +311,7 @@ function clearParsed() {
   parsedSelection.value = new Set()
   parseError.value      = ''
   fileName.value        = ''
+  rawFileContext.value  = { text: '', name: '', type: '' }
   if (fileInput.value) fileInput.value.value = ''
 }
 

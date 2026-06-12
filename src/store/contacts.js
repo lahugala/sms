@@ -23,26 +23,43 @@ export const contactStore = reactive({
   get total() { return this.contacts.length },
 })
 
-function normalizePhone(phone, countryCode = '+94') {
+function normalizePhone(phone, options = {}) {
+  const { countryCode = '+94', ignoreInternational = false } = options
   const raw = String(phone || '').trim()
   if (!raw) return ''
 
   const digits = raw.replace(/[^\d+]/g, '')
   if (!digits) return ''
 
-  if (digits.startsWith('+')) return `+${digits.slice(1).replace(/\D/g, '')}`
-  if (digits.startsWith('00')) return `+${digits.slice(2).replace(/\D/g, '')}`
+  let normalized = ''
+  let isLocalEntry = false
 
-  const local = digits.replace(/\D/g, '')
-  if (local.startsWith('0') && local.length > 1) {
-    return `${countryCode}${local.slice(1)}`
+  if (digits.startsWith('+')) {
+    normalized = `+${digits.slice(1).replace(/\D/g, '')}`
+  } else if (digits.startsWith('00')) {
+    normalized = `+${digits.slice(2).replace(/\D/g, '')}`
+  } else {
+    isLocalEntry = true
+    const local = digits.replace(/\D/g, '')
+    if (local.startsWith('0') && local.length > 1) {
+      normalized = `${countryCode}${local.slice(1)}`
+    } else if (local.length >= 7) {
+      normalized = `${countryCode}${local}`
+    }
   }
 
-  if (local.length >= 7) {
-    return `${countryCode}${local}`
+  // Filter for mobile numbers only
+  if (normalized.startsWith(countryCode)) {
+    if (countryCode === '+94') {
+      // Sri Lankan mobile numbers start with +94 followed by 7 and exactly 8 digits
+      if (!/^\+947\d{8}$/.test(normalized)) return ''
+    }
+  } else if (ignoreInternational || normalized.length < 10 || normalized.length > 15) {
+    // Basic catch-all for other international mobile lengths, or explicitly ignore international
+    return ''
   }
 
-  return ''
+  return normalized
 }
 
 export function addContacts(newContacts) {
@@ -79,7 +96,7 @@ export function clearContacts() {
  * Auto-detects columns — looks for headers like name/phone/mobile/cell/number.
  * Falls back to first two columns if no headers match.
  */
-export function parseCSV(text) {
+export function parseCSV(text, options = {}) {
   const lines = text.split(/\r?\n/).filter(l => l.trim())
   if (lines.length < 1) return []
 
@@ -114,7 +131,7 @@ export function parseCSV(text) {
   const result = []
   for (let i = dataStart; i < lines.length; i++) {
     const cols  = splitLine(lines[i])
-    const phone = normalizePhone(cols[pi] || '')
+    const phone = normalizePhone(cols[pi] || '', options)
     if (phone.length < 7) continue   // skip obviously invalid
     result.push({ name: cols[ni]?.replace(/^"|"$/g, '') || '', phone })
   }
@@ -125,7 +142,7 @@ export function parseCSV(text) {
  * Parse a plain text file into [{ name, phone }].
  * Accepts one contact per line, optionally with a name and number separated by commas, semicolons, pipes, or tabs.
  */
-export function parseTextContacts(text) {
+export function parseTextContacts(text, options = {}) {
   const contacts = []
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
 
@@ -135,9 +152,9 @@ export function parseTextContacts(text) {
     let phone = ''
 
     if (parts.length === 1) {
-      phone = normalizePhone(parts[0])
+      phone = normalizePhone(parts[0], options)
     } else {
-      phone = normalizePhone(parts[parts.length - 1])
+      phone = normalizePhone(parts[parts.length - 1], options)
       name = parts.slice(0, -1).join(' ').trim()
     }
 
@@ -151,7 +168,7 @@ export function parseTextContacts(text) {
  * Parse a vCard (.vcf) string into [{ name, phone }].
  * Handles vCard 2.1, 3.0, and 4.0.
  */
-export function parseVCard(text) {
+export function parseVCard(text, options = {}) {
   const contacts = []
   const cards    = text.split(/BEGIN:VCARD/i).slice(1)
 
@@ -169,7 +186,7 @@ export function parseVCard(text) {
         name = [parts[1], parts[0]].filter(Boolean).join(' ').trim()
       } else if (upper.startsWith('TEL') && line.includes(':')) {
         const raw   = line.split(':').slice(1).join(':').trim()
-        const clean = normalizePhone(raw)
+        const clean = normalizePhone(raw, options)
         if (clean && !phone) phone = clean
       }
     }
